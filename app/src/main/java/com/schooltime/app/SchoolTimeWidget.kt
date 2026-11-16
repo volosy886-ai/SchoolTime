@@ -1,60 +1,92 @@
 package com.schooltime.app
 
+import android.app.AlarmManager
+import android.app.PendingIntent
+import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProvider
+import android.content.ComponentName
 import android.content.Context
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.glance.GlanceId
-import androidx.glance.GlanceModifier
-import androidx.glance.background
-import androidx.glance.layout.Alignment
-import androidx.glance.layout.Column
-import androidx.glance.layout.fillMaxSize
-import androidx.glance.layout.padding
-import androidx.glance.appwidget.GlanceAppWidget
-import androidx.glance.appwidget.GlanceAppWidgetReceiver
-import androidx.glance.appwidget.provideContent
-import androidx.glance.text.Text
-import androidx.glance.text.TextStyle
-import androidx.glance.unit.ColorProvider
+import android.content.Intent
+import android.os.SystemClock
+import android.widget.RemoteViews
 
-class SchoolTimeWidget : GlanceAppWidget() {
-    override suspend fun provideGlance(context: Context, id: GlanceId) {
-        provideContent {
-            val prefs = context.getSharedPreferences("schooltime_settings", Context.MODE_PRIVATE)
-            val glass = prefs.getBoolean("glass", false)
-            val status = Timetable.status()
-            val bg = if (glass) 0xCC344B66.toInt() else 0xFF171C27.toInt()
+internal object SchoolTimePrefs {
+    const val FILE = "schooltime_settings"
+    const val KEY_GLASS = "glass"
+    fun isGlass(context: Context) = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        .getBoolean(KEY_GLASS, false)
+}
 
-            Column(
-                modifier = GlanceModifier.fillMaxSize()
-                    .background(ColorProvider(bg))
-                    .padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    status.detail,
-                    style = TextStyle(color = ColorProvider(0xFF9DB7D8.toInt()), fontSize = 10.sp)
-                )
-                Text(
-                    status.title,
-                    style = TextStyle(color = ColorProvider(0xFFFFFFFF.toInt()), fontSize = 16.sp)
-                )
-                if (status.remaining.isNotBlank()) {
-                    Text(
-                        status.remaining,
-                        style = TextStyle(color = ColorProvider(0xFF72E5A2.toInt()), fontSize = 23.sp)
-                    )
-                }
-                Text(
-                    "Далее: ${status.next}",
-                    style = TextStyle(color = ColorProvider(0xFFD0D7E2.toInt()), fontSize = 10.sp)
-                )
+class SchoolTimeWidgetProvider : AppWidgetProvider() {
+    override fun onEnabled(context: Context) {
+        scheduleTicks(context)
+    }
+
+    override fun onDisabled(context: Context) {
+        val alarm = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        alarm.cancel(tickPendingIntent(context))
+    }
+
+    override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
+        updateAll(context)
+        scheduleTicks(context)
+    }
+
+    override fun onReceive(context: Context, intent: Intent) {
+        super.onReceive(context, intent)
+        when (intent.action) {
+            ACTION_TICK, Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED -> {
+                updateAll(context)
+                scheduleTicks(context)
             }
         }
     }
-}
 
-class SchoolTimeWidgetReceiver : GlanceAppWidgetReceiver() {
-    override val glanceAppWidget: GlanceAppWidget = SchoolTimeWidget()
+    companion object {
+        const val ACTION_TICK = "com.schooltime.app.ACTION_WIDGET_TICK"
+
+        fun updateAll(context: Context) {
+            val manager = AppWidgetManager.getInstance(context)
+            val component = ComponentName(context, SchoolTimeWidgetProvider::class.java)
+            val ids = manager.getAppWidgetIds(component)
+            if (ids.isEmpty()) return
+            val status = Timetable.status()
+            val glass = SchoolTimePrefs.isGlass(context)
+            ids.forEach { id ->
+                val views = RemoteViews(context.packageName, R.layout.widget_schooltime)
+                views.setInt(
+                    R.id.widget_root, "setBackgroundResource",
+                    if (glass) R.drawable.widget_bg_glass else R.drawable.widget_bg_classic
+                )
+                views.setTextViewText(R.id.widget_status, status.detail)
+                views.setTextViewText(R.id.widget_title, status.title)
+                views.setTextViewText(R.id.widget_timer_label, status.timerLabel)
+                views.setTextViewText(R.id.widget_timer, status.remaining)
+                views.setTextViewText(R.id.widget_next, if (status.next.isBlank()) "" else "Далее: ${status.next}")
+                views.setViewVisibility(R.id.widget_timer_label, if (status.remaining.isBlank()) android.view.View.GONE else android.view.View.VISIBLE)
+                views.setViewVisibility(R.id.widget_timer, if (status.remaining.isBlank()) android.view.View.GONE else android.view.View.VISIBLE)
+                val open = Intent(context, MainActivity::class.java)
+                val pi = PendingIntent.getActivity(context, 0, open, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                views.setOnClickPendingIntent(R.id.widget_root, pi)
+                manager.updateAppWidget(id, views)
+            }
+        }
+
+        fun refresh(context: Context) = updateAll(context)
+
+        private fun scheduleTicks(context: Context) {
+            val alarm = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val pending = tickPendingIntent(context)
+            val first = SystemClock.elapsedRealtime() + 60_000L
+            alarm.setInexactRepeating(AlarmManager.ELAPSED_REALTIME, first, 60_000L, pending)
+        }
+
+        private fun tickPendingIntent(context: Context): PendingIntent {
+            val intent = Intent(context, SchoolTimeWidgetProvider::class.java).setAction(ACTION_TICK)
+            return PendingIntent.getBroadcast(
+                context, 501, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        }
+    }
 }
