@@ -18,66 +18,37 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 
 class SchoolTimeWidget : GlanceAppWidget() {
-
-    override suspend fun provideGlance(
-        context: Context,
-        id: GlanceId
-    ) {
+    override suspend fun provideGlance(context: Context, id: GlanceId) {
         provideContent {
-            val prefs = context.getSharedPreferences(
-                "schooltime_settings",
-                Context.MODE_PRIVATE
-            )
-
+            val prefs = context.getSharedPreferences("schooltime_settings", Context.MODE_PRIVATE)
             val glass = prefs.getBoolean("glass", false)
             val status = Timetable.status()
-
-            val backgroundColor = if (glass) {
-                0xCC344B66.toInt()
-            } else {
-                0xFF171C27.toInt()
-            }
+            val bg = if (glass) 0xCC344B66.toInt() else 0xFF171C27.toInt()
 
             Column(
-                modifier = GlanceModifier
-                    .fillMaxSize()
-                    .background(ColorProvider(backgroundColor))
+                modifier = GlanceModifier.fillMaxSize()
+                    .background(ColorProvider(bg))
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
                     status.detail,
-                    style = TextStyle(
-                        color = ColorProvider(0xFF9DB7D8.toInt()),
-                        fontSize = 10.sp
-                    )
+                    style = TextStyle(color = ColorProvider(0xFF9DB7D8.toInt()), fontSize = 10.sp)
                 )
-
                 Text(
                     status.title,
-                    style = TextStyle(
-                        color = ColorProvider(0xFFFFFFFF.toInt()),
-                        fontSize = 16.sp
-                    )
+                    style = TextStyle(color = ColorProvider(0xFFFFFFFF.toInt()), fontSize = 16.sp)
                 )
-
                 if (status.remaining.isNotBlank()) {
                     Text(
                         status.remaining,
-                        style = TextStyle(
-                            color = ColorProvider(0xFF72E5A2.toInt()),
-                            fontSize = 23.sp
-                        )
+                        style = TextStyle(color = ColorProvider(0xFF72E5A2.toInt()), fontSize = 23.sp)
                     )
                 }
-
                 Text(
                     "Далее: ${status.next}",
-                    style = TextStyle(
-                        color = ColorProvider(0xFFD0D7E2.toInt()),
-                        fontSize = 10.sp
-                    )
+                    style = TextStyle(color = ColorProvider(0xFFD0D7E2.toInt()), fontSize = 10.sp)
                 )
             }
         }
@@ -85,6 +56,5 @@ class SchoolTimeWidget : GlanceAppWidget() {
 }
 
 class SchoolTimeWidgetReceiver : GlanceAppWidgetReceiver() {
-    override val glanceAppWidget: GlanceAppWidget =
-        SchoolTimeWidget()
+    override val glanceAppWidget: GlanceAppWidget = SchoolTimeWidget()
 }
